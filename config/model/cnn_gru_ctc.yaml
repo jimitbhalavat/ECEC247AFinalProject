@@ -1,0 +1,14 @@
+# @package _global_
+module:
+  _target_: emg2qwerty.lightning.CNNGRUCTCModule
+  in_features: 528
+  mlp_features: [256, 128]
+  block_channels: [64, 96, 96, 64]
+  kernel_width: 5
+  gru_hidden: 256
+  gru_layers: 2
+
+datamodule:
+  _target_: emg2qwerty.lightning.WindowedEMGDataModule
+  window_length: 2000  # 4 sec windows for 2kHz EMG
+  padding: [900, 100]  # 900ms past context, 100ms future context
