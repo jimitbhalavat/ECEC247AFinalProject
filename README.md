@@ -1,146 +1,126 @@
-# C147/247 Final Project
-### Winter 2026 
+# ECEC247A Final Project - Predicting Keystrokes from Electromyography Signals
 
-This course project is built upon the emg2qwerty work from Meta. The first section of this README provides some guidance for working with the repo and contains a running list of FAQs. **Note that the rest of the README is from the original repo and we encourage you to take a look at their work.**
+This project explores deep learning models for predicting QWERTY keystrokes from surface electromyography (sEMG) signals using the **emg2qwerty dataset**. The goal is to decode text typed by a user based only on muscle activity recorded from wrist sensors.
 
-## Guiding Tips + FAQs
-_Last updated 2/13/2025_
-- Read through the Project Guidelines to ensure that you have a clear understanding of what we expect
-- Familiarize yourself with the prediction task and get a high-level understanding of their base architecture (it would be beneficial to read about CTC loss)
-- Get comfortable with the codebase
-  - ```lightning.py``` + ```modules.py``` - where most of your model architecture development will take place
-  - ```data.py``` - defines PyTorch dataset (likely will not need to touch this much)
-  - ```transforms.py``` - implement more data transforms and other preprocessing techniques
-  - ```config/*.yaml``` - modify model hyperparameters and PyTorch Lightning training configuration
-    - **Q: How do we update these configuration files?** A: Note the structure of YAML files include basic key-value pairs (i.e. ```<key>: <value>```) and hierarchical structure. So, for instance, if we wanted to update the ```mlp_features``` hyperparameter of the ```TDSConvCTCModule```, we would change the value at line 5 of ```config/model/tds_conv_ctc.yaml``` (under ```module```). _Read more details [here](https://pytorch-lightning.readthedocs.io/en/1.3.8/common/lightning_cli.html)._
-    - **Q: Where do we configure data splitting?** A: Refer to ```config/user/single_user.yaml```. Be careful with your edits, so that you don't accidentally move the test data into your training set.
+We evaluate multiple neural network architectures including CNNs, RNNs, LSTMs, GRUs, and hybrid CNN + recurrent models. Our experiments show that combining convolutional feature extraction with recurrent sequence modeling gives the best performance.
 
-# emg2qwerty
-[ [`Paper`](https://arxiv.org/abs/2410.20081) ] [ [`Dataset`](https://fb-ctrl-oss.s3.amazonaws.com/emg2qwerty/emg2qwerty-data-2021-08.tar.gz) ] [ [`Blog`](https://ai.meta.com/blog/open-sourcing-surface-electromyography-datasets-neurips-2024/) ] [ [`BibTeX`](#citing-emg2qwerty) ]
+The best model in this project is a **CNN + LSTM hybrid**, achieving a **Character Error Rate (CER) of 18.0** on the test set.
 
-A dataset of surface electromyography (sEMG) recordings while touch typing on a QWERTY keyboard with ground-truth, benchmarks and baselines.
+## Authors
+- Andrew Wild
+- Aaron Lit
+- Joanna Tang
+- Jimit Bhalavat
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/71a9f361-7685-4188-83c3-099a009b6b81" height="80%" width="80%" alt="alt="sEMG recording" >
-</p>
+## Dataset
 
-## Setup
+We use the **emg2qwerty dataset**, which contains sEMG recordings from wrist electrodes while users type on a QWERTY keyboard.
 
-```shell
-# Install [git-lfs](https://git-lfs.github.com/) (for pretrained checkpoints)
-git lfs install
+Key details:
 
-# Clone the repo, setup environment, and install local package
-git clone git@github.com:joe-lin-tech/emg2qwerty.git ~/emg2qwerty 
-cd ~/emg2qwerty
-conda env create -f environment.yml
-conda activate emg2qwerty
-pip install -e .
+- 32 electrode channels (16 per wrist)
+- Sampling rate: **2 kHz**
+- Data collected from typing sessions
+- Train / validation / test splits provided in the original repository
 
-# Download the dataset, extract, and symlink to ~/emg2qwerty/data
-cd ~ && wget https://fb-ctrl-oss.s3.amazonaws.com/emg2qwerty/emg2qwerty-data-2021-08.tar.gz
-tar -xvzf emg2qwerty-data-2021-08.tar.gz
-ln -s ~/emg2qwerty-data-2021-08 ~/emg2qwerty/data
-```
+In this project we use **single-subject training** with data from subject `89335547`.
 
-## Data
+## Input Representation
 
-The dataset consists of 1,136 files in total - 1,135 session files spanning 108 users and 346 hours of recording, and one `metadata.csv` file. Each session file is in a simple HDF5 format and includes the left and right sEMG signal data, prompted text, keylogger ground-truth, and their corresponding timestamps. `emg2qwerty.data.EMGSessionData` offers a programmatic read-only interface into the HDF5 session files.
+Raw EMG signals are converted into **log spectrograms** using a Short-Time Fourier Transform.
 
-To load the `metadata.csv` file and print dataset statistics,
+Parameters used:
 
-```shell
-python scripts/print_dataset_stats.py
-```
+- `nfft = 64`
+- `hop length = 16`
+- Frame every **8 ms**
+- **33 frequency bins per channel**
 
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/172884/131012947-66cab4c4-963c-4f1a-af12-47fea1681f09.png" alt="Dataset statistics" height="50%" width="50%">
-</p>
+During training, recordings are split into windows:
 
-To re-generate data splits,
+- Window length: **2000 samples (4 seconds)**
+- Context: **900 ms before** and **100 ms after**
 
-```shell
-python scripts/generate_splits.py
-```
+The extra context helps the model use surrounding temporal information.
 
-The following figure visualizes the dataset splits for training, validation and testing of generic and personalized user models. Refer to the paper for details of the benchmark setup and data splits.
+## Training Augmentations
 
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/172884/131012465-504eccbf-8eac-4432-b8aa-0e453ad85b49.png" alt="Data splits">
-</p>
+Several augmentations are used to improve model robustness.
 
-To re-format data in [EEG BIDS format](https://bids-specification.readthedocs.io/en/stable/04-modality-specific-files/03-electroencephalography.html),
+- Random Band Rotation: Rotates electrode channels within each wrist band, simulates small changes in band placement
+- Temporal Alignment Jitter: Shifts timing between left and right wrist signals, simulates synchronization differences between sensors
+- SpecAugment: Randomly masks small regions in time and frequency
+- Gaussian Noise: Adds small noise to the signal
+- Input Normalization: Normalizes signal amplitude before model input
 
-```shell
-python scripts/convert_to_bids.py
-```
+In the single-subject setting, some augmentations (such as band rotation) can hurt performance because the same user wears the sensors consistently.
 
-## Training
+## Model Architectures
 
-Generic user model:
+All models share the same preprocessing pipeline:
 
-```shell
-python -m emg2qwerty.train \
-  user=generic \
-  trainer.accelerator=gpu trainer.devices=8 \
-  --multirun
-```
+- Log-spectrogram input
+- Spectrogram normalization
+- Feature MLP
+- CTC output layer
 
-Personalized user models:
+Each architecture receives a **768-dimensional feature vector per time step** and is trained using **CTC loss with greedy decoding**.
 
-```shell
-python -m emg2qwerty.train \
-  user="single_user" \
-  trainer.accelerator=gpu trainer.devices=1
-```
+#### CNN Baseline
 
-If you are using a Slurm cluster, include "cluster=slurm" override in the argument list of above commands to pick up `config/cluster/slurm.yaml`. This overrides the Hydra Launcher to use [Submitit plugin](https://hydra.cc/docs/plugins/submitit_launcher). Refer to Hydra documentation for the list of available launcher plugins if you are not using a Slurm cluster.
+The baseline model is a **Time-Depth Separable (TDS) convolutional network**. The CNN learns temporal patterns directly from spectrogram features using convolutional layers. It captures local temporal structure while remaining computationally efficient. We also test additional variants of the CNN baseline using Gaussian noise injection and Input normalization These experiments test whether simple signal-level regularization improves performance without changing the architecture.
 
-## Testing
+#### Vanilla RNN
 
-Greedy decoding:
+We evaluate a simple recurrent neural network as a baseline sequence model. Vanilla RNNs often suffer from **vanishing or exploding gradients** when sequences are long. To stabilize training we apply gradient clipping using **Pascanu’s norm-based criterion**, weight decay, and dropout
 
-```shell
-python -m emg2qwerty.train \
-  user="glob(user*)" \
-  checkpoint="${HOME}/emg2qwerty/models/personalized-finetuned/\${user}.ckpt" \
-  train=False trainer.accelerator=cpu \
-  decoder=ctc_greedy \
-  hydra.launcher.mem_gb=64 \
-  --multirun
-```
+We experiment with `tanh` and `ReLU` nonlinearities, multiple layers, and different hidden sizes. This model serves as a baseline for comparing gated recurrent architectures.
 
-Beam-search decoding with 6-gram character-level language model:
+#### LSTM
 
-```shell
-python -m emg2qwerty.train \
-  user="glob(user*)" \
-  checkpoint="${HOME}/emg2qwerty/models/personalized-finetuned/\${user}.ckpt" \
-  train=False trainer.accelerator=cpu \
-  decoder=ctc_beam \
-  hydra.launcher.mem_gb=64 \
-  --multirun
-```
+We evaluate a **Long Short-Term Memory (LSTM)** network. LSTMs introduce gating mechanisms that help preserve gradient flow and capture long-range temporal dependencies. This makes them well suited for EMG sequences.Experiments vary hidden size (192–256) and number of layers (2–3)
 
-The 6-gram character-level language model, used by the first-pass beam-search decoder above, is generated from [WikiText-103 raw dataset](https://huggingface.co/datasets/wikitext), and built using [KenLM](https://github.com/kpu/kenlm). The LM is available under `models/lm/`, both in the binary format, and the human-readable [ARPA format](https://cmusphinx.github.io/wiki/arpaformat/). These can be regenerated as follows:
+#### GRU
 
-1. Build kenlm from source: <https://github.com/kpu/kenlm#compiling>
-2. Run `./scripts/lm/build_char_lm.sh <ngram_order>`
+We also test **Gated Recurrent Units (GRUs)**. GRUs are similar to LSTMs but use fewer parameters. They merge some gating operations and remove the separate memory cell. Gradient clipping and dropout are used to stabilize training.
 
-## License
+#### CNN + RNN Hybrid
 
-emg2qwerty is CC-BY-NC-4.0 licensed, as found in the LICENSE file.
+This model combines convolutional feature extraction with a vanilla RNN.The CNN layers first extract local temporal patterns from the spectrogram. The RNN then models longer temporal dependencies. Additional augmentations tested gaussian noise and specAugment
 
-## Citing emg2qwerty
+#### CNN + LSTM Hybrid
 
-```
-@misc{sivakumar2024emg2qwertylargedatasetbaselines,
-      title={emg2qwerty: A Large Dataset with Baselines for Touch Typing using Surface Electromyography},
-      author={Viswanath Sivakumar and Jeffrey Seely and Alan Du and Sean R Bittner and Adam Berenzweig and Anuoluwapo Bolarinwa and Alexandre Gramfort and Michael I Mandel},
-      year={2024},
-      eprint={2410.20081},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2410.20081},
-}
-```
+This architecture uses the same CNN front-end but replaces the RNN with an LSTM. The CNN captures local patterns while the LSTM models long-range temporal dependencies. This model achieved the **best results** in our experiments.
+
+#### CNN + GRU Hybrid
+
+The final hybrid architecture replaces the LSTM with a GRU. This tests whether a simpler gated model can achieve similar performance when CNN layers already capture local structure.
+
+## Training Setup
+
+Models are trained using:
+
+- **Optimizer:** Adam
+- **Learning rate:** `2e-4 – 1e-3`
+- **Batch size:** usually 16
+- **Training epochs:** 25–60
+- **Loss:** CTC
+
+Performance is evaluated using **Character Error Rate (CER)**. Lower CER means the predicted text matches the true keystrokes more closely.
+
+## Results
+
+Best results achieved for each architecture:
+
+| Architecture | Best Test CER |
+|---|---|
+| CNN baseline | 24.9 |
+| CNN + noise + normalization | 20.8 |
+| Vanilla RNN | 28.9 |
+| LSTM | 20.8 |
+| GRU | 81.4 |
+| CNN + RNN | 23.4 |
+| CNN + GRU | 100.0 |
+| CNN + LSTM | **18.0** |
+
+The **CNN + LSTM hybrid** performs best because CNN extracts local spectrogram features and LSTM captures long-range temporal dependencies
