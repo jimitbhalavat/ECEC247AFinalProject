@@ -1,14 +1,14 @@
 # @package _global_
 module:
   _target_: emg2qwerty.lightning.CNNLSTMCTCModule
-  in_features: 528              # Input feature dim after MLP
+  in_features: 528 
   mlp_features: [256, 128]
   block_channels: [64, 128, 128, 64]  # TDS conv channels per block
-  kernel_width: 5               # Kernel width for TDS conv
+  kernel_width: 5                     # Kernel width for TDS conv
   lstm_hidden: 320
   lstm_layers: 3
 
 datamodule:
   _target_: emg2qwerty.lightning.WindowedEMGDataModule
-  window_length: 2000  # 4 sec windows for 2kHz EMG
-  padding: [900, 100]  # 900ms past context, 100ms future context
+  window_length: 2000 
+  padding: [900, 100]

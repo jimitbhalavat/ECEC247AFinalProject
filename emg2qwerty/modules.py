@@ -1,5 +1,3 @@
-# modules.py
-
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 #
@@ -277,12 +275,6 @@ class TDSConvEncoder(nn.Module):
         return self.tds_conv_blocks(inputs)  # (T, N, num_features)
 
 class BiLSTMEncoder(nn.Module):
-    """
-    Bidirectional LSTM encoder for EMG decoding.
-    Input: (T, N, num_features)
-    Output: (T, N, hidden_size * 2)
-    """
-
     def __init__(
         self,
         input_size: int,

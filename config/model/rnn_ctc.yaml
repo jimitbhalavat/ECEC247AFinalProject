@@ -9,4 +9,4 @@ module:
 datamodule:
   _target_: emg2qwerty.lightning.WindowedEMGDataModule
   window_length: 2000
-  padding: [1000, 100]
+  padding: [900, 100]

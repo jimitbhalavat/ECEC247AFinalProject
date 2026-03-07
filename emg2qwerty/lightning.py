@@ -1,5 +1,3 @@
-# lightning.py
-
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 #
@@ -335,11 +333,6 @@ class LSTMCTCModule(pl.LightningModule):
         N = len(input_lengths)  # batch_size
 
         emissions = self.forward(inputs)
-
-        # Shrink input lengths by an amount equivalent to the conv encoder's
-        # temporal receptive field to compute output activation lengths for CTCLoss.
-        # NOTE: This assumes the encoder doesn't perform any temporal downsampling
-        # such as by striding.
         T_diff = inputs.shape[0] - emissions.shape[0]
         emission_lengths = input_lengths - T_diff
 
@@ -458,7 +451,7 @@ class CNNLSTMCTCModule(pl.LightningModule):
         )
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        x = self.feature_extractor(inputs)  # flatten to (T, N, num_features)
+        x = self.feature_extractor(inputs)   # flatten to (T, N, num_features)
         x = self.encoder(x)                  # CNN + LSTM -> (T, N, lstm_hidden*2)
         return self.classifier(x)
 
