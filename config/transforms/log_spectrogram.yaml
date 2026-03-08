@@ -7,7 +7,7 @@ band_rotation:
   _target_: emg2qwerty.transforms.ForEach  # i.i.d rotation offset for each band
   transform:
     _target_: emg2qwerty.transforms.RandomBandRotation
-    offsets: [0] # [-1, 0, 1]
+    offsets: [0]
 
 temporal_jitter:
   _target_: emg2qwerty.transforms.TemporalAlignmentJitter
